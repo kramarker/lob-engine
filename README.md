@@ -30,6 +30,24 @@ market maker's internal book does it? This repo answers that with measured numbe
 
 C++17/20 · CMake · GoogleTest · Google Benchmark · `perf` · ASan/UBSan
 
+## Build & test (planned)
+
+> Tooling is configured; **no engine source exists yet**, so these commands set up
+> and build the (currently empty) project. They become functional as `src/`,
+> `tests/`, and `benchmarks/` are implemented.
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release   # configure (succeeds with empty src/)
+cmake --build build -j                           # build once sources exist
+ctest --test-dir build --output-on-failure       # run GoogleTest suite (once tests exist)
+./build/lob_benchmarks                            # run Google Benchmark suite (once benches exist)
+```
+
+Toolchain: CMake ≥ 3.20 · a C++20 compiler · `clang-format` / `clang-tidy` for
+style and static analysis. GoogleTest and Google Benchmark are fetched
+automatically via CMake `FetchContent` when the corresponding sources are added.
+Build with `-DLOB_ENABLE_SANITIZERS=ON` for ASan/UBSan during development.
+
 ## Results
 
 | Metric | Baseline (`std::map`) | Optimized (arena) |
