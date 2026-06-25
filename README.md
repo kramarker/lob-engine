@@ -51,7 +51,7 @@ book, an arena/object-pool allocator, concurrency, and stop/iceberg order types.
 
 - Fixed-point (integer tick) price representation vs. `double` comparison bugs. *(done)*
 - Object pool / arena allocator vs. naive `new Order()` per order. *(later)*
-- Correct nanosecond-scale benchmarking (warm-up, avoiding dead-code elision, percentiles). *(baseline throughput done; percentiles later)*
+- Correct nanosecond-scale benchmarking (warm-up, avoiding dead-code elision, percentiles). *(throughput and TSC-based latency percentiles done for the baseline)*
 
 ## Stack
 
@@ -86,6 +86,21 @@ cmake --build cmake-build-release --target lob_benchmarks -j
 Each case builds a fresh book per iteration (setup excluded from timing via
 `PauseTiming`) and reports throughput in orders processed per second.
 
+A separate harness, `lob_latency`, reports **per-operation latency percentiles**
+rather than throughput. It also must be built in Release:
+
+```bash
+cmake --build cmake-build-release --target lob_latency -j
+./cmake-build-release/lob_latency            # defaults: depth=100000 samples=100000
+./cmake-build-release/lob_latency 200000 200000
+```
+
+The operations take tens of nanoseconds — finer than `steady_clock` resolves — so
+the harness times each one with the x86 TSC (`rdtsc`/`rdtscp`, `lfence`-serialized),
+calibrated to nanoseconds against `steady_clock` at startup. It is x86-64 specific
+and GCC/Clang only. The rdtsc pair's own cost is measured and printed as a "timer
+overhead" row; operation rows are reported gross (timer cost included).
+
 ## Results — baseline (`std::map` book)
 
 These are **baseline** numbers for the correctness-first `std::map`-of-levels
@@ -100,6 +115,23 @@ orders. Throughput in millions of orders/sec; expect a few % run-to-run variance
 | `BM_PartialFills`      | partial fill, maker decremented in place | 33.9 M/s | 34.3 M/s |
 | `BM_MixedWorkload`     | random side/price/size over a multi-level book | 23.8 M/s | 18.3 M/s |
 
-Latency percentiles (p50/p99) and a before/after against the cache-optimized book
-are deliberately deferred to the optimization stage — the point of this baseline is
-to have an honest starting line to beat.
+### Latency percentiles (`lob_latency`)
+
+Per-operation latency for the `std::map` book, measured with the TSC harness
+described above. Single-threaded, g++ 16.1.0, `-O3 -DNDEBUG`, 100,000 resting
+orders and 100,000 timed operations per scenario, on a 3.19 GHz x86-64 machine.
+Figures in nanoseconds per operation.
+
+| Operation | p50 | p90 | p99 | p99.9 | Notes |
+|-----------|-----|-----|-----|-------|-------|
+| timer overhead | 10 | 10 | 11 | 12 | rdtsc pair cost; subtract to read the rows below |
+| resting insert | 36 | 46 | 78 | ~600 | level lookup + FIFO append |
+| crossing match | 45 | 53 | 106 | ~240 | cross detect, one fill, pop maker |
+| cancel | 159 | 213 | 310 | ~1200 | index lookup + in-level scan; the map layout's weak spot |
+
+p50–p99 are stable to a few ns run-to-run; p99.9 and max swing with OS scheduling
+(a single preempted sample shows up as a multi-microsecond max) and should be read
+as order-of-magnitude tail indicators, not precise figures. Cancellation is the
+slowest path — the linear in-level scan and the map/deque pointer chasing are
+exactly what the cache-optimized book (still to come) is meant to remove. A
+before/after against that implementation is the next benchmarking milestone.

@@ -52,8 +52,9 @@ if(LOB_BUILD_TESTS AND LOB_TEST_SOURCES AND LOB_SOURCES)
   gtest_discover_tests(lob_tests)
 endif()
 
-# Benchmarks — pulled in via FetchContent once benchmark sources exist.
-file(GLOB LOB_BENCH_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/*.cpp)
+# Throughput microbenchmarks (Google Benchmark) — files named bench_*.cpp,
+# linked into one executable against benchmark_main. Pulled in via FetchContent.
+file(GLOB LOB_BENCH_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/bench_*.cpp)
 if(LOB_BUILD_BENCHMARKS AND LOB_BENCH_SOURCES AND LOB_SOURCES)
   include(FetchContent)
   set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
@@ -67,4 +68,14 @@ if(LOB_BUILD_BENCHMARKS AND LOB_BENCH_SOURCES AND LOB_SOURCES)
   add_executable(lob_benchmarks ${LOB_BENCH_SOURCES})
   # benchmark_main provides main(); benchmark files only register cases.
   target_link_libraries(lob_benchmarks PRIVATE lob_engine lob_warnings benchmark::benchmark_main)
+endif()
+
+# Latency harness — a standalone executable with its own main() that reports
+# per-operation latency percentiles. It deliberately does not depend on Google
+# Benchmark: per-op tail latency needs a full distribution, not the aggregate
+# statistics Google Benchmark collects across repetitions.
+set(LOB_LATENCY_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/latency_order_book.cpp)
+if(LOB_BUILD_BENCHMARKS AND LOB_SOURCES AND EXISTS ${LOB_LATENCY_SOURCE})
+  add_executable(lob_latency ${LOB_LATENCY_SOURCE})
+  target_link_libraries(lob_latency PRIVATE lob_engine lob_warnings)
 endif()
