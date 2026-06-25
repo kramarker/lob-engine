@@ -57,10 +57,14 @@ file(GLOB LOB_BENCH_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/benchm
 if(LOB_BUILD_BENCHMARKS AND LOB_BENCH_SOURCES AND LOB_SOURCES)
   include(FetchContent)
   set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+  set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+  set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+  set(BENCHMARK_ENABLE_WERROR OFF CACHE BOOL "" FORCE)
   FetchContent_Declare(googlebenchmark
     GIT_REPOSITORY https://github.com/google/benchmark.git
     GIT_TAG v1.9.0)
   FetchContent_MakeAvailable(googlebenchmark)
   add_executable(lob_benchmarks ${LOB_BENCH_SOURCES})
-  target_link_libraries(lob_benchmarks PRIVATE lob_engine lob_warnings benchmark::benchmark)
+  # benchmark_main provides main(); benchmark files only register cases.
+  target_link_libraries(lob_benchmarks PRIVATE lob_engine lob_warnings benchmark::benchmark_main)
 endif()
