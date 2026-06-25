@@ -86,8 +86,7 @@ private:
   // serves both sides; the only asymmetry — the crossing-price test — is folded
   // into `crosses`. Removes fully consumed makers from the book and the index.
   template <class OppositeMap, class Crosses>
-  void match(Order& order, OppositeMap& opposite, const Crosses& crosses,
-             std::vector<Fill>& fills);
+  void match(Order& order, OppositeMap& opposite, const Crosses& crosses, std::vector<Fill>& fills);
 
   // Total quantity `order` could immediately trade against the opposite side,
   // capped at order.quantity. Used to decide a fill-or-kill before mutating any

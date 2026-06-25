@@ -5,7 +5,9 @@
 namespace lob {
 
 template <class OppositeMap, class Crosses>
-void OrderBook::match(Order& order, OppositeMap& opposite, const Crosses& crosses,
+void OrderBook::match(Order& order,
+                      OppositeMap& opposite,
+                      const Crosses& crosses,
                       std::vector<Fill>& fills) {
   // Walk the opposite side best-price-first. begin() is the best level by the
   // map's comparator, and within a level the deque front is the oldest resting
@@ -81,8 +83,7 @@ std::vector<Fill> OrderBook::submit(const Order& incoming) {
   // Fill-or-kill is decided up front: if the book cannot fill the whole order,
   // reject it without touching any state, so a partial sweep is never left
   // behind. This costs one read-only pass but keeps the commit atomic.
-  if (order.tif == TimeInForce::FOK &&
-      fillable_quantity(order) < order.quantity) {
+  if (order.tif == TimeInForce::FOK && fillable_quantity(order) < order.quantity) {
     return fills;
   }
 
@@ -101,8 +102,8 @@ std::vector<Fill> OrderBook::submit(const Order& incoming) {
   // Only a GTC limit order rests its remainder; market, IOC and FOK orders
   // never rest. (A FOK that reached here filled in full, so its remainder is
   // already zero, but the type/tif guard makes the intent explicit.)
-  const bool rests = order.type == OrderType::Limit &&
-                     order.tif == TimeInForce::GTC && order.quantity > 0;
+  const bool rests =
+      order.type == OrderType::Limit && order.tif == TimeInForce::GTC && order.quantity > 0;
   if (rests) {
     // Price-time priority is maintained on two axes: across price levels by the
     // maps' key ordering (best price is always begin()), and within a level by
