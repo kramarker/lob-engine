@@ -30,4 +30,27 @@ void BM_RestingInsert(benchmark::State& state) {
 }
 BENCHMARK(BM_RestingInsert)->Arg(1000)->Arg(10000);
 
+// Set up K resting asks at one price (setup excluded from timing), then time K
+// crossing buys that each fully consume one resting order. This isolates the
+// full-match path: cross detection, emitting one fill, and popping the maker.
+void BM_CrossingFullMatch(benchmark::State& state) {
+  const int k = static_cast<int>(state.range(0));
+  for (auto _ : state) {
+    state.PauseTiming();
+    OrderBook book;
+    for (int i = 0; i < k; ++i) {
+      book.add_limit_order(Order{static_cast<OrderId>(i), Side::Sell, 100, 10});
+    }
+    state.ResumeTiming();
+
+    for (int i = 0; i < k; ++i) {
+      auto fills = book.add_limit_order(Order{static_cast<OrderId>(k + i), Side::Buy, 100, 10});
+      benchmark::DoNotOptimize(fills);
+    }
+    benchmark::ClobberMemory();
+  }
+  state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations()) * k);
+}
+BENCHMARK(BM_CrossingFullMatch)->Arg(1000)->Arg(10000);
+
 }  // namespace
