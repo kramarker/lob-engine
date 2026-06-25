@@ -29,6 +29,29 @@ std::vector<Fill> OrderBook::add_limit_order(Order order) {
         break;  // remaining maker is larger than our order; handled later.
       }
     }
+  } else {
+    // A sell crosses the bids from the highest price downward, while its limit
+    // is at or below the bid price. Same full-fill-only behaviour as the buy
+    // path; partial fills are added in a later step.
+    while (order.quantity > 0 && !bids_.empty()) {
+      const auto best = bids_.begin();
+      const Price bid_price = best->first;
+      if (order.price > bid_price) {
+        break;  // best bid is below our limit: no longer crossing.
+      }
+      Level& level = best->second;
+      while (!level.empty() && order.quantity >= level.front().quantity) {
+        const RestingOrder& maker = level.front();
+        fills.push_back({order.id, maker.id, bid_price, maker.quantity});
+        order.quantity -= maker.quantity;
+        level.pop_front();
+      }
+      if (level.empty()) {
+        bids_.erase(best);
+      } else {
+        break;  // remaining maker is larger than our order; handled later.
+      }
+    }
   }
 
   // Any quantity that did not cross rests at its limit price, joining the back
