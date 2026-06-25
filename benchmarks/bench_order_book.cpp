@@ -10,6 +10,7 @@ using lob::Order;
 using lob::OrderBook;
 using lob::OrderId;
 using lob::Price;
+using lob::Quantity;
 using lob::Side;
 
 // Insert K non-crossing resting orders into a fresh book. With only buys present
@@ -52,5 +53,27 @@ void BM_CrossingFullMatch(benchmark::State& state) {
   state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations()) * k);
 }
 BENCHMARK(BM_CrossingFullMatch)->Arg(1000)->Arg(10000);
+
+// Rest one large ask (setup excluded), then time K unit-sized crossing buys that
+// each only partially fill it. This isolates the partial-fill path: the maker
+// stays at the front of its level and is decremented in place every time.
+void BM_PartialFills(benchmark::State& state) {
+  const int k = static_cast<int>(state.range(0));
+  for (auto _ : state) {
+    state.PauseTiming();
+    OrderBook book;
+    // Sized so K unit buys never fully deplete the resting order.
+    book.add_limit_order(Order{0, Side::Sell, 100, static_cast<Quantity>(k) + 1});
+    state.ResumeTiming();
+
+    for (int i = 0; i < k; ++i) {
+      auto fills = book.add_limit_order(Order{static_cast<OrderId>(i + 1), Side::Buy, 100, 1});
+      benchmark::DoNotOptimize(fills);
+    }
+    benchmark::ClobberMemory();
+  }
+  state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations()) * k);
+}
+BENCHMARK(BM_PartialFills)->Arg(1000)->Arg(10000);
 
 }  // namespace
