@@ -119,4 +119,42 @@ TEST(FullMatches, BuySweepsMultipleAskLevels) {
   EXPECT_TRUE(book.empty());
 }
 
+// An incoming buy smaller than the resting sell is fully filled; the resting
+// sell keeps the remainder at the same price, and nothing rests on the bid.
+TEST(PartialFills, IncomingSmallerThanRestingMaker) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Sell, 100, 10));
+  const std::vector<Fill> fills = book.add_limit_order(limit(2, Side::Buy, 100, 4));
+  ASSERT_EQ(fills.size(), 1u);
+  EXPECT_EQ(fills[0].quantity, 4u);
+  EXPECT_EQ(book.quantity_at(Side::Sell, 100), 6u);
+  EXPECT_FALSE(book.best_bid().has_value());
+}
+
+// An incoming buy larger than the resting sell consumes it fully and rests its
+// own remainder as a new bid.
+TEST(PartialFills, IncomingLargerThanRestingMaker) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Sell, 100, 4));
+  const std::vector<Fill> fills = book.add_limit_order(limit(2, Side::Buy, 100, 10));
+  ASSERT_EQ(fills.size(), 1u);
+  EXPECT_EQ(fills[0].quantity, 4u);
+  EXPECT_FALSE(book.best_ask().has_value());
+  ASSERT_TRUE(book.best_bid().has_value());
+  EXPECT_EQ(*book.best_bid(), 100);
+  EXPECT_EQ(book.quantity_at(Side::Buy, 100), 6u);
+}
+
+// Partial fill on the sell side: an incoming sell smaller than the resting buy
+// leaves the buy with its remainder.
+TEST(PartialFills, SellPartiallyFillsRestingBuy) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Buy, 100, 10));
+  const std::vector<Fill> fills = book.add_limit_order(limit(2, Side::Sell, 100, 3));
+  ASSERT_EQ(fills.size(), 1u);
+  EXPECT_EQ(fills[0].quantity, 3u);
+  EXPECT_EQ(book.quantity_at(Side::Buy, 100), 7u);
+  EXPECT_FALSE(book.best_ask().has_value());
+}
+
 }  // namespace
