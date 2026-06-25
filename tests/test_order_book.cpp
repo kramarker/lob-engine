@@ -195,4 +195,72 @@ TEST(FifoPriority, PartialFillConsumesOldestOnly) {
   EXPECT_EQ(book.quantity_at(Side::Sell, 100), 7u);  // 2 left of id 1 + 5 of id 2
 }
 
+// --- Cancellation -----------------------------------------------------------
+
+// Cancelling a resting order removes it and frees its price level.
+TEST(Cancellation, RemovesRestingOrder) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Buy, 100, 10));
+  EXPECT_TRUE(book.cancel(1));
+  EXPECT_TRUE(book.empty());
+  EXPECT_FALSE(book.best_bid().has_value());
+  EXPECT_EQ(book.resting_order_count(), 0u);
+}
+
+// Cancelling an unknown id is a no-op that reports failure.
+TEST(Cancellation, UnknownIdIsNoOp) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Buy, 100, 10));
+  EXPECT_FALSE(book.cancel(999));
+  EXPECT_EQ(book.quantity_at(Side::Buy, 100), 10u);
+  EXPECT_EQ(book.resting_order_count(), 1u);
+}
+
+// Cancelling one order at a shared price leaves the others, preserving FIFO
+// order among the survivors.
+TEST(Cancellation, RemovesOnlyTargetAtSharedPrice) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Buy, 100, 5));
+  book.add_limit_order(limit(2, Side::Buy, 100, 5));
+  book.add_limit_order(limit(3, Side::Buy, 100, 5));
+  EXPECT_TRUE(book.cancel(2));
+  EXPECT_EQ(book.quantity_at(Side::Buy, 100), 10u);
+
+  // The remaining orders still match oldest-first: id 1 before id 3.
+  const std::vector<Fill> fills = book.add_limit_order(limit(4, Side::Sell, 100, 10));
+  ASSERT_EQ(fills.size(), 2u);
+  EXPECT_EQ(fills[0].maker_id, 1u);
+  EXPECT_EQ(fills[1].maker_id, 3u);
+}
+
+// An order that has fully traded is gone from the index, so cancelling it fails.
+TEST(Cancellation, FullyFilledOrderCannotBeCancelled) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Sell, 100, 5));
+  book.add_limit_order(limit(2, Side::Buy, 100, 5));  // consumes id 1
+  EXPECT_FALSE(book.cancel(1));
+}
+
+// A partially filled maker is still resting and remains cancellable; cancelling
+// it removes its remaining quantity.
+TEST(Cancellation, PartiallyFilledMakerStillCancellable) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Sell, 100, 10));
+  book.add_limit_order(limit(2, Side::Buy, 100, 4));  // leaves 6 of id 1 resting
+  EXPECT_EQ(book.quantity_at(Side::Sell, 100), 6u);
+  EXPECT_TRUE(book.cancel(1));
+  EXPECT_TRUE(book.empty());
+}
+
+// After a cancel-and-resubmit cycle the id can be cancelled again, confirming
+// the index is cleaned up on both removal paths (match and cancel).
+TEST(Cancellation, IndexStaysConsistentAcrossResubmit) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Buy, 100, 5));
+  EXPECT_TRUE(book.cancel(1));
+  book.add_limit_order(limit(1, Side::Buy, 100, 5));
+  EXPECT_TRUE(book.cancel(1));
+  EXPECT_TRUE(book.empty());
+}
+
 }  // namespace

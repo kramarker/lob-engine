@@ -13,8 +13,8 @@ then will measure and optimize it.
 
 ## What's implemented now
 
-A correctness-first, single-threaded matching core with full unit-test coverage
-(15 tests, all passing):
+A correctness-first, single-threaded matching core with unit-test coverage
+(21 tests, all passing):
 
 - **Integer-tick pricing** — prices are `std::int64_t` ticks, never floating point.
 - **Limit orders** — `add_limit_order` crosses against the opposite side and rests
@@ -25,6 +25,10 @@ A correctness-first, single-threaded matching core with full unit-test coverage
   incoming order sweeping multiple resting orders and resting its leftover.
 - **Price-time priority** — best price first (across levels) and FIFO within a price
   level, with the within-level invariant checked by assertion on insertion.
+- **Cancellation** — `cancel(id)` removes a resting order, backed by an
+  `id -> location` index. In this map-of-deques layout the lookup is O(1) but the
+  removal within a level is a linear scan; the flat implementation (later) makes it
+  O(1).
 
 Not yet implemented (deliberately, in later stages): the cache-optimized flat-array
 book, an arena/object-pool allocator, concurrency, and market/stop/iceberg order
