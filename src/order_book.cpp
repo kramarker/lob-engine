@@ -1,5 +1,7 @@
 #include "lob/order_book.hpp"
 
+#include <cassert>
+
 namespace lob {
 
 std::vector<Fill> OrderBook::add_limit_order(Order order) {
@@ -63,15 +65,19 @@ std::vector<Fill> OrderBook::add_limit_order(Order order) {
     }
   }
 
-  // Any quantity that did not cross rests at its limit price, joining the back
-  // of its price level (later arrivals have lower priority).
+  // Any quantity that did not cross rests at its limit price. Price-time
+  // priority is maintained on two axes: across price levels by the maps' key
+  // ordering (best price is always begin()), and within a level by appending to
+  // the back so that earlier arrivals — which carry a lower sequence — stay at
+  // the front, where matching consumes them first. The assertion below pins
+  // that within-level invariant: a newly rested order must sort after every
+  // order already at its level.
   if (order.quantity > 0) {
     const RestingOrder resting{order.id, order.quantity, next_seq_++};
-    if (is_buy(order.side)) {
-      bids_[order.price].push_back(resting);
-    } else {
-      asks_[order.price].push_back(resting);
-    }
+    Level& level = is_buy(order.side) ? bids_[order.price] : asks_[order.price];
+    assert((level.empty() || level.back().seq < resting.seq) &&
+           "price-time priority: a later arrival must rest behind earlier ones");
+    level.push_back(resting);
   }
 
   return fills;
