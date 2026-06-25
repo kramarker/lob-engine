@@ -41,18 +41,69 @@ void OrderBook::match(Order& order, OppositeMap& opposite, const Crosses& crosse
   }
 }
 
-std::vector<Fill> OrderBook::add_limit_order(Order order) {
+Quantity OrderBook::fillable_quantity(const Order& order) const {
+  // Sum the quantity reachable while still crossing, short-circuiting as soon as
+  // the order's full size is covered. Read-only: this runs before a fill-or-kill
+  // commits, so it must not mutate the book.
+  Quantity available = 0;
+  if (is_buy(order.side)) {
+    for (const auto& [ask_price, level] : asks_) {
+      if (order.type != OrderType::Market && order.price < ask_price) {
+        break;
+      }
+      for (const RestingOrder& maker : level) {
+        available += maker.quantity;
+        if (available >= order.quantity) {
+          return order.quantity;
+        }
+      }
+    }
+  } else {
+    for (const auto& [bid_price, level] : bids_) {
+      if (order.type != OrderType::Market && order.price > bid_price) {
+        break;
+      }
+      for (const RestingOrder& maker : level) {
+        available += maker.quantity;
+        if (available >= order.quantity) {
+          return order.quantity;
+        }
+      }
+    }
+  }
+  return available;
+}
+
+std::vector<Fill> OrderBook::submit(const Order& incoming) {
   std::vector<Fill> fills;
+  Order order = incoming;  // working copy; quantity is decremented as it fills.
+
+  // Fill-or-kill is decided up front: if the book cannot fill the whole order,
+  // reject it without touching any state, so a partial sweep is never left
+  // behind. This costs one read-only pass but keeps the commit atomic.
+  if (order.tif == TimeInForce::FOK &&
+      fillable_quantity(order) < order.quantity) {
+    return fills;
+  }
 
   if (is_buy(order.side)) {
-    const auto crosses = [&](Price ask_price) { return order.price >= ask_price; };
+    const auto crosses = [&](Price ask_price) {
+      return order.type == OrderType::Market || order.price >= ask_price;
+    };
     match(order, asks_, crosses, fills);
   } else {
-    const auto crosses = [&](Price bid_price) { return order.price <= bid_price; };
+    const auto crosses = [&](Price bid_price) {
+      return order.type == OrderType::Market || order.price <= bid_price;
+    };
     match(order, bids_, crosses, fills);
   }
 
-  if (order.quantity > 0) {
+  // Only a GTC limit order rests its remainder; market, IOC and FOK orders
+  // never rest. (A FOK that reached here filled in full, so its remainder is
+  // already zero, but the type/tif guard makes the intent explicit.)
+  const bool rests = order.type == OrderType::Limit &&
+                     order.tif == TimeInForce::GTC && order.quantity > 0;
+  if (rests) {
     // Price-time priority is maintained on two axes: across price levels by the
     // maps' key ordering (best price is always begin()), and within a level by
     // appending to the back so earlier arrivals — carrying a lower sequence —

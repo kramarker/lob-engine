@@ -27,11 +27,19 @@ namespace lob {
 // weakness; the flat implementation will remove it with intrusive links.
 class OrderBook {
 public:
-  // Submits a limit order. The order first crosses against the opposite side
-  // wherever its price allows (honouring price-time priority), producing zero
-  // or more fills; any quantity that remains afterwards rests in the book.
-  // Returns the fills generated, in execution order.
-  std::vector<Fill> add_limit_order(Order order);
+  // Submits an order. The order crosses the opposite side wherever its price
+  // and type allow (honouring price-time priority), producing zero or more
+  // fills; any remainder rests only for a GTC limit order. Returns the fills
+  // generated, in execution order.
+  //
+  // Semantics by type / time-in-force:
+  //   - Limit + GTC: cross, then rest any remainder.
+  //   - Limit + IOC: cross, then discard any remainder.
+  //   - Limit + FOK: cross only if the order can be filled in full; otherwise
+  //     no fills are produced and the book is left unchanged.
+  //   - Market: cross against all reachable levels regardless of price; never
+  //     rests. A market FOK is rejected unless the whole size can be filled.
+  std::vector<Fill> submit(const Order& order);
 
   // Cancels a resting order by id. Returns true if an order with that id was
   // resting and has been removed, false otherwise (unknown id, or an id that
@@ -80,6 +88,11 @@ private:
   template <class OppositeMap, class Crosses>
   void match(Order& order, OppositeMap& opposite, const Crosses& crosses,
              std::vector<Fill>& fills);
+
+  // Total quantity `order` could immediately trade against the opposite side,
+  // capped at order.quantity. Used to decide a fill-or-kill before mutating any
+  // state. Read-only.
+  Quantity fillable_quantity(const Order& order) const;
 
   BidMap bids_;
   AskMap asks_;

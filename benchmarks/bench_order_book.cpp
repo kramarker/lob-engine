@@ -24,7 +24,7 @@ void BM_RestingInsert(benchmark::State& state) {
     OrderBook book;
     for (int i = 0; i < k; ++i) {
       const Price price = 1000 - (i % 256);
-      book.add_limit_order(Order{static_cast<OrderId>(i), Side::Buy, price, 10});
+      book.submit(Order{static_cast<OrderId>(i), Side::Buy, price, 10});
     }
     benchmark::DoNotOptimize(book);
     benchmark::ClobberMemory();
@@ -42,12 +42,12 @@ void BM_CrossingFullMatch(benchmark::State& state) {
     state.PauseTiming();
     OrderBook book;
     for (int i = 0; i < k; ++i) {
-      book.add_limit_order(Order{static_cast<OrderId>(i), Side::Sell, 100, 10});
+      book.submit(Order{static_cast<OrderId>(i), Side::Sell, 100, 10});
     }
     state.ResumeTiming();
 
     for (int i = 0; i < k; ++i) {
-      auto fills = book.add_limit_order(Order{static_cast<OrderId>(k + i), Side::Buy, 100, 10});
+      auto fills = book.submit(Order{static_cast<OrderId>(k + i), Side::Buy, 100, 10});
       benchmark::DoNotOptimize(fills);
     }
     benchmark::ClobberMemory();
@@ -65,11 +65,11 @@ void BM_PartialFills(benchmark::State& state) {
     state.PauseTiming();
     OrderBook book;
     // Sized so K unit buys never fully deplete the resting order.
-    book.add_limit_order(Order{0, Side::Sell, 100, static_cast<Quantity>(k) + 1});
+    book.submit(Order{0, Side::Sell, 100, static_cast<Quantity>(k) + 1});
     state.ResumeTiming();
 
     for (int i = 0; i < k; ++i) {
-      auto fills = book.add_limit_order(Order{static_cast<OrderId>(i + 1), Side::Buy, 100, 1});
+      auto fills = book.submit(Order{static_cast<OrderId>(i + 1), Side::Buy, 100, 1});
       benchmark::DoNotOptimize(fills);
     }
     benchmark::ClobberMemory();
@@ -81,7 +81,7 @@ BENCHMARK(BM_PartialFills)->Arg(1000)->Arg(10000);
 // A mixed, more realistic workload: K orders with pseudo-random side, price (in a
 // tight band so both sides interleave and cross) and size. The order stream is
 // generated deterministically during the paused setup phase, so timing covers
-// only add_limit_order across the full spread of resting, crossing and partial
+// only submit across the full spread of resting, crossing and partial
 // paths over a multi-level book.
 void BM_MixedWorkload(benchmark::State& state) {
   const int k = static_cast<int>(state.range(0));
@@ -104,7 +104,7 @@ void BM_MixedWorkload(benchmark::State& state) {
     state.ResumeTiming();
 
     for (const Order& op : ops) {
-      auto fills = book.add_limit_order(op);
+      auto fills = book.submit(op);
       benchmark::DoNotOptimize(fills);
     }
     benchmark::ClobberMemory();

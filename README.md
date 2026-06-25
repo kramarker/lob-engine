@@ -14,11 +14,11 @@ then will measure and optimize it.
 ## What's implemented now
 
 A correctness-first, single-threaded matching core with unit-test coverage
-(21 tests, all passing):
+(26 tests, all passing):
 
 - **Integer-tick pricing** — prices are `std::int64_t` ticks, never floating point.
-- **Limit orders** — `add_limit_order` crosses against the opposite side and rests
-  any remainder.
+- **Limit orders** — `submit` crosses against the opposite side and rests any
+  remainder.
 - **Buy- and sell-side matching** with price improvement going to the aggressing taker
   (execution happens at the resting maker's price).
 - **Partial fills** — both an incoming order partly filling a resting order, and an
@@ -29,10 +29,13 @@ A correctness-first, single-threaded matching core with unit-test coverage
   `id -> location` index. In this map-of-deques layout the lookup is O(1) but the
   removal within a level is a linear scan; the flat implementation (later) makes it
   O(1).
+- **Order types and time-in-force** — market orders (cross at any price, never rest),
+  and limit orders with GTC (rest remainder), IOC (discard remainder), or FOK
+  (all-or-nothing, rejected atomically if not fully fillable).
 
 Not yet implemented (deliberately, in later stages): the cache-optimized flat-array
-book, an arena/object-pool allocator, concurrency, and market/stop/iceberg order
-types. (Baseline benchmarks exist — see Results below.)
+book, an arena/object-pool allocator, concurrency, and stop/iceberg order types.
+(Baseline benchmarks exist — see Results below.)
 
 ## Architecture
 
