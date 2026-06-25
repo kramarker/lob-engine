@@ -68,4 +68,55 @@ TEST(RestingOrders, SamePriceAccumulatesQuantity) {
   EXPECT_EQ(book.quantity_at(Side::Buy, 100), 25u);
 }
 
+// A buy that exactly matches a resting sell trades in full; nothing rests, and
+// the single fill names taker, maker, price and size.
+TEST(FullMatches, BuyFullyMatchesRestingSell) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Sell, 100, 10));
+  const std::vector<Fill> fills = book.add_limit_order(limit(2, Side::Buy, 100, 10));
+  ASSERT_EQ(fills.size(), 1u);
+  EXPECT_EQ(fills[0].taker_id, 2u);
+  EXPECT_EQ(fills[0].maker_id, 1u);
+  EXPECT_EQ(fills[0].price, 100);
+  EXPECT_EQ(fills[0].quantity, 10u);
+  EXPECT_TRUE(book.empty());
+}
+
+// Symmetric case: a sell that exactly matches a resting buy.
+TEST(FullMatches, SellFullyMatchesRestingBuy) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Buy, 100, 8));
+  const std::vector<Fill> fills = book.add_limit_order(limit(2, Side::Sell, 100, 8));
+  ASSERT_EQ(fills.size(), 1u);
+  EXPECT_EQ(fills[0].price, 100);
+  EXPECT_EQ(fills[0].quantity, 8u);
+  EXPECT_TRUE(book.empty());
+}
+
+// A buy priced above the ask executes at the resting maker's price (the price
+// improvement accrues to the aggressing taker).
+TEST(FullMatches, AggressiveBuyTradesAtMakerPrice) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Sell, 100, 5));
+  const std::vector<Fill> fills = book.add_limit_order(limit(2, Side::Buy, 105, 5));
+  ASSERT_EQ(fills.size(), 1u);
+  EXPECT_EQ(fills[0].price, 100);
+  EXPECT_TRUE(book.empty());
+}
+
+// A large buy sweeps multiple ask levels cheapest-first, emitting one fill per
+// resting order consumed.
+TEST(FullMatches, BuySweepsMultipleAskLevels) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Sell, 100, 4));
+  book.add_limit_order(limit(2, Side::Sell, 101, 6));
+  const std::vector<Fill> fills = book.add_limit_order(limit(3, Side::Buy, 101, 10));
+  ASSERT_EQ(fills.size(), 2u);
+  EXPECT_EQ(fills[0].price, 100);
+  EXPECT_EQ(fills[0].quantity, 4u);
+  EXPECT_EQ(fills[1].price, 101);
+  EXPECT_EQ(fills[1].quantity, 6u);
+  EXPECT_TRUE(book.empty());
+}
+
 }  // namespace
