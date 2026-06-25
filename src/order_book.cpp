@@ -5,8 +5,34 @@ namespace lob {
 std::vector<Fill> OrderBook::add_limit_order(Order order) {
   std::vector<Fill> fills;
 
-  // No matching yet: any positive quantity simply rests at its limit price,
-  // joining the back of its price level (later arrivals have lower priority).
+  if (is_buy(order.side)) {
+    // A buy crosses the asks from the lowest price upward, while its limit is at
+    // or above the ask price. For now an incoming order only consumes resting
+    // orders it can fill in full; splitting a resting order (partial fills) is
+    // added in a later step.
+    while (order.quantity > 0 && !asks_.empty()) {
+      const auto best = asks_.begin();
+      const Price ask_price = best->first;
+      if (order.price < ask_price) {
+        break;  // best ask is above our limit: no longer crossing.
+      }
+      Level& level = best->second;
+      while (!level.empty() && order.quantity >= level.front().quantity) {
+        const RestingOrder& maker = level.front();
+        fills.push_back({order.id, maker.id, ask_price, maker.quantity});
+        order.quantity -= maker.quantity;
+        level.pop_front();
+      }
+      if (level.empty()) {
+        asks_.erase(best);
+      } else {
+        break;  // remaining maker is larger than our order; handled later.
+      }
+    }
+  }
+
+  // Any quantity that did not cross rests at its limit price, joining the back
+  // of its price level (later arrivals have lower priority).
   if (order.quantity > 0) {
     const RestingOrder resting{order.id, order.quantity, next_seq_++};
     if (is_buy(order.side)) {
