@@ -7,9 +7,8 @@ std::vector<Fill> OrderBook::add_limit_order(Order order) {
 
   if (is_buy(order.side)) {
     // A buy crosses the asks from the lowest price upward, while its limit is at
-    // or above the ask price. For now an incoming order only consumes resting
-    // orders it can fill in full; splitting a resting order (partial fills) is
-    // added in a later step.
+    // or above the ask price, filling resting orders in full and then partially
+    // filling the next resting order with whatever quantity remains.
     while (order.quantity > 0 && !asks_.empty()) {
       const auto best = asks_.begin();
       const Price ask_price = best->first;
@@ -25,14 +24,19 @@ std::vector<Fill> OrderBook::add_limit_order(Order order) {
       }
       if (level.empty()) {
         asks_.erase(best);
-      } else {
-        break;  // remaining maker is larger than our order; handled later.
+      } else if (order.quantity > 0) {
+        // The incoming order is smaller than the oldest resting order at this
+        // price: fill it fully and leave the resting order with the remainder.
+        RestingOrder& maker = level.front();
+        fills.push_back({order.id, maker.id, ask_price, order.quantity});
+        maker.quantity -= order.quantity;
+        order.quantity = 0;
       }
     }
   } else {
     // A sell crosses the bids from the highest price downward, while its limit
-    // is at or below the bid price. Same full-fill-only behaviour as the buy
-    // path; partial fills are added in a later step.
+    // is at or below the bid price, with the same fill behaviour as the buy
+    // path (full fills, then a partial fill of the next resting order).
     while (order.quantity > 0 && !bids_.empty()) {
       const auto best = bids_.begin();
       const Price bid_price = best->first;
@@ -48,8 +52,13 @@ std::vector<Fill> OrderBook::add_limit_order(Order order) {
       }
       if (level.empty()) {
         bids_.erase(best);
-      } else {
-        break;  // remaining maker is larger than our order; handled later.
+      } else if (order.quantity > 0) {
+        // The incoming order is smaller than the oldest resting order at this
+        // price: fill it fully and leave the resting order with the remainder.
+        RestingOrder& maker = level.front();
+        fills.push_back({order.id, maker.id, bid_price, order.quantity});
+        maker.quantity -= order.quantity;
+        order.quantity = 0;
       }
     }
   }
