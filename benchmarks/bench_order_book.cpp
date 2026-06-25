@@ -1,6 +1,8 @@
 #include <benchmark/benchmark.h>
 
 #include <cstdint>
+#include <random>
+#include <vector>
 
 #include "lob/order_book.hpp"
 
@@ -75,5 +77,40 @@ void BM_PartialFills(benchmark::State& state) {
   state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations()) * k);
 }
 BENCHMARK(BM_PartialFills)->Arg(1000)->Arg(10000);
+
+// A mixed, more realistic workload: K orders with pseudo-random side, price (in a
+// tight band so both sides interleave and cross) and size. The order stream is
+// generated deterministically during the paused setup phase, so timing covers
+// only add_limit_order across the full spread of resting, crossing and partial
+// paths over a multi-level book.
+void BM_MixedWorkload(benchmark::State& state) {
+  const int k = static_cast<int>(state.range(0));
+  for (auto _ : state) {
+    state.PauseTiming();
+    OrderBook book;
+    std::vector<Order> ops;
+    ops.reserve(static_cast<std::size_t>(k));
+    std::mt19937 rng(12345);
+    std::uniform_int_distribution<int> side_dist(0, 1);
+    std::uniform_int_distribution<int> price_dist(95, 105);
+    std::uniform_int_distribution<int> qty_dist(1, 20);
+    for (int i = 0; i < k; ++i) {
+      const Side side = side_dist(rng) == 0 ? Side::Buy : Side::Sell;
+      ops.push_back(Order{static_cast<OrderId>(i),
+                          side,
+                          static_cast<Price>(price_dist(rng)),
+                          static_cast<Quantity>(qty_dist(rng))});
+    }
+    state.ResumeTiming();
+
+    for (const Order& op : ops) {
+      auto fills = book.add_limit_order(op);
+      benchmark::DoNotOptimize(fills);
+    }
+    benchmark::ClobberMemory();
+  }
+  state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations()) * k);
+}
+BENCHMARK(BM_MixedWorkload)->Arg(1000)->Arg(10000);
 
 }  // namespace
