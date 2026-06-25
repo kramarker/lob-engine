@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 project(lob_engine LANGUAGES CXX)
 
 # ----------------------------------------------------------------------------
-# Build configuration (scaffold). No source files exist yet — targets below are
-# created conditionally so `cmake` configures cleanly before implementation.
+# Build configuration. Each target is declared conditionally on its sources
+# existing, so `cmake` configures cleanly as components are added.
 # ----------------------------------------------------------------------------
 
 set(CMAKE_CXX_STANDARD 20)
