@@ -157,4 +157,42 @@ TEST(PartialFills, SellPartiallyFillsRestingBuy) {
   EXPECT_FALSE(book.best_ask().has_value());
 }
 
+// At one price the oldest resting order (lowest sequence) is matched first.
+TEST(FifoPriority, OldestOrderAtPriceFillsFirst) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Sell, 100, 5));  // rests first
+  book.add_limit_order(limit(2, Side::Sell, 100, 5));  // rests behind id 1
+  const std::vector<Fill> fills = book.add_limit_order(limit(3, Side::Buy, 100, 5));
+  ASSERT_EQ(fills.size(), 1u);
+  EXPECT_EQ(fills[0].maker_id, 1u);
+  EXPECT_EQ(book.quantity_at(Side::Sell, 100), 5u);  // only id 2 remains
+}
+
+// A taker sweeping a whole level fills the resting orders in arrival order.
+TEST(FifoPriority, SweepFillsInArrivalOrder) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Buy, 100, 3));
+  book.add_limit_order(limit(2, Side::Buy, 100, 3));
+  book.add_limit_order(limit(3, Side::Buy, 100, 3));
+  const std::vector<Fill> fills = book.add_limit_order(limit(4, Side::Sell, 100, 9));
+  ASSERT_EQ(fills.size(), 3u);
+  EXPECT_EQ(fills[0].maker_id, 1u);
+  EXPECT_EQ(fills[1].maker_id, 2u);
+  EXPECT_EQ(fills[2].maker_id, 3u);
+  EXPECT_TRUE(book.empty());
+}
+
+// A partial fill consumes only the oldest order; a later same-price order keeps
+// its place and quantity.
+TEST(FifoPriority, PartialFillConsumesOldestOnly) {
+  OrderBook book;
+  book.add_limit_order(limit(1, Side::Sell, 100, 5));
+  book.add_limit_order(limit(2, Side::Sell, 100, 5));
+  const std::vector<Fill> fills = book.add_limit_order(limit(3, Side::Buy, 100, 3));
+  ASSERT_EQ(fills.size(), 1u);
+  EXPECT_EQ(fills[0].maker_id, 1u);
+  EXPECT_EQ(fills[0].quantity, 3u);
+  EXPECT_EQ(book.quantity_at(Side::Sell, 100), 7u);  // 2 left of id 1 + 5 of id 2
+}
+
 }  // namespace
